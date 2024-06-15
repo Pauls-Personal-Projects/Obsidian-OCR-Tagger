@@ -4,6 +4,7 @@ from pytesseract import image_to_string                         # For OCR
 from PIL import Image                                           # For Image Processing
 from tqdm import tqdm                                           # For Progress Bar
 from concurrent.futures import ThreadPoolExecutor, as_completed # For Parallel Processing
+import unicodedata                                              # For Unicode Normalization
 
 # VARIABLES / PROPERTIES
 VAULT_PATH = '/Users/paul/Arukas-Pilv/📝 Märkmed/Pauli Obsidiaan/'
@@ -77,6 +78,26 @@ def extract_image_links(md_file: str, overwrite: bool) -> list[str]:
 
 
 
+def modify_image_path(image_path):
+    """
+    Modifies the image path to remove the directory and its contents that match '.resources'.
+
+    This function splits the path by the directory separator, removes any segment (and its contents)
+    that ends with '.resources', and then reconstructs the path without that segment.
+
+    Parameters:
+    - image_path (str): The original file path of the image.
+
+    Returns:
+    - str: The modified file path with the '.resources' directory and its contents removed.
+    """
+    path_parts = image_path.split(os.sep)
+    modified_parts = [part for part in path_parts if '.resources' not in part]
+    modified_path = os.sep.join(modified_parts)
+    return modified_path
+
+
+
 def perform_ocr(image_path: str) -> str:
     """
     Perform OCR (Optical Character Recognition) on an image file.
@@ -106,8 +127,11 @@ def perform_ocr(image_path: str) -> str:
         ocr_text = image_to_string(Image.open(image_path), lang=OCR_LANGUAGES)
         return ocr_text.strip().replace('\n', ' ').replace('\r', '').replace('\t', ' ').replace('  ', ' ').replace(r'"', r"'").replace('\\', '\\\\')
     except Exception as e:
-        print(f"Error processing {image_path}: {e}")
-        return None
+        if "No such file or directory" in str(e) and ".resources" in image_path:
+            return perform_ocr(modify_image_path(image_path))
+        else:
+            print(f"Error processing {image_path}: {e}")
+            return None
 
 
 
@@ -197,7 +221,7 @@ def find_linked_attachment(md_path: str, image_link: str) -> str:
     if ATTACHMENT_FOLDER not in image_link:
         return os.path.dirname(md_path)+"/"+ATTACHMENT_FOLDER+"/"+str(os.path.splitext(os.path.basename(md_path))[0]).replace(" ","_")+".resources/"+os.path.basename(image_link)
     else:
-        return os.path.dirname(md_path)+'/'+'/'.join([i for i in image_link.split('/') if i not in md_path.split('/')])
+        return os.path.dirname(md_path)+'/'+'/'.join([i for i in image_link.split('/') if unicodedata.normalize('NFD', i) not in [unicodedata.normalize('NFD', part) for part in md_path.split('/')]])
 
 
 
